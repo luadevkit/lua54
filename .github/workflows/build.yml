@@ -1,0 +1,55 @@
+name: Build Versions
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ 'windows-latest', 'ubuntu-latest', 'macos-latest' ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Build Binaries
+        run: |
+          cmake -E remove_directory build
+          cmake -E remove_directory dist
+          cmake -Bbuild -DCMAKE_INSTALL_PREFIX=dist
+          cmake --build build --target install --config release
+          cmake --build build --target package --config release
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: lua-${{ matrix.os }}
+          path: artifacts/lua*.*
+
+  create-releases:
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create Release
+        id: create-release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+      - name: Download Artifacts
+        id: download-artifacts
+        uses: actions/download-artifact@v2
+        with:
+          path: ~/artifacts
+      - name: Upload Assets
+        uses: dwenegar/upload-release-assets@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          release_id: ${{ steps.create-release.outputs.id }}
+          assets_path: ${{ steps.download-artifacts.outputs.download-path }}/**/*
+
